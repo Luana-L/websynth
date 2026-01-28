@@ -1,5 +1,4 @@
 var audioCtx;
-var osc;
 var waveformType = 'sine';
 
 const keyboardFrequencyMap = {
@@ -36,7 +35,56 @@ document.addEventListener("DOMContentLoaded", function (event) {
 window.addEventListener('keydown', keyDown, false);
 window.addEventListener('keyup', keyUp, false);
 
-activeOscillators = {}
+const activeOscillators = {}
+const activeGainNodes = {}
+
+function playNote(key) {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        osc.frequency.setValueAtTime(keyboardFrequencyMap[key], audioCtx.currentTime);
+        osc.type = waveformType;
+
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        const attack = 0.03;
+        const decay = 0.15;
+        const sustain = 0.2;
+
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(0.0001, now);
+
+        gainNode.gain.exponentialRampToValueAtTime(1.0, now + attack);
+        gainNode.gain.exponentialRampToValueAtTime(
+                sustain,
+                now + attack + decay
+        );
+
+        osc.start();
+
+        activeOscillators[key] = osc;
+        activeGainNodes[key] = gainNode;
+}
+
+function stopNote(key) {
+        const osc = activeOscillators[key];
+        const gainNode = activeGainNodes[key];
+        if (!osc || !gainNode) return;
+
+        const now = audioCtx.currentTime;
+        const releaseTime = 0.2;
+
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setTargetAtTime(0.0001, now, releaseTime);
+
+        osc.stop(audioCtx.currentTime + releaseTime * 5);
+
+        delete activeOscillators[key];
+        delete activeGainNodes[key];
+}
 
 function keyDown(event) {
         const key = (event.detail || event.which).toString();
@@ -47,19 +95,8 @@ function keyDown(event) {
 
 function keyUp(event) {
         const key = (event.detail || event.which).toString();
-        if (keyboardFrequencyMap[key] && activeOscillators[key]) {
-                activeOscillators[key].stop();
-                delete activeOscillators[key];
-        }
-}
-
-function playNote(key) {
-        const osc = audioCtx.createOscillator();
-        osc.frequency.setValueAtTime(keyboardFrequencyMap[key], audioCtx.currentTime)
-        osc.type = waveformType
-        osc.connect(audioCtx.destination)
-        osc.start();
-        activeOscillators[key] = osc
+        if (!activeOscillators[key]) return;
+        stopNote(key);
 }
 
 document.getElementById('audio-control').addEventListener('click', function () {
